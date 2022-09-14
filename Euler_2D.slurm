@@ -27,7 +27,7 @@
 #! Uncomment this to prevent the job from being requeued (e.g. if
 #! interrupted by node failure or system downtime):
 ##SBATCH --no-requeue
-#SBATCH --reservation=hpcacademy-day2
+#SBATCH --reservation=hpcacademy-day3
 
 #! sbatch directives end here (put any additional directives above this line)
 
@@ -68,7 +68,7 @@ workdir="$SLURM_SUBMIT_DIR"  # The value of SLURM_SUBMIT_DIR sets workdir to the
 
 #! Are you using OpenMP (NB this is unrelated to OpenMPI)? If so increase this
 #! safe value to no more than 76:
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS=2
 
 #! Number of MPI tasks to be started by the application per node and in total (do not change):
 np=$[${numnodes}*${mpi_tasks_per_node}]
