@@ -14,7 +14,6 @@
 #include <tuple>
 #include <limits>
 #include <omp.h>
-
 typedef std::array<double,4> State;
 
 enum ConsVar{RHO=0, MOM_X, MOM_Y, ENE};
@@ -97,7 +96,7 @@ State flux(const State& cons, unsigned int coord)
   {
     f[MOM_X + d] = momN * prim[V_X + d];
   }
-  
+ 
   f[MOM_X + coord] += p;
 
   return f;
@@ -118,6 +117,7 @@ double maxSpeed(const State& cons)
 double timestep(const std::vector<State>& data, const double dx)
 {
   double dt = std::numeric_limits<double>::max();
+//#pragma omp parallel for schedule(dynamic) default(none) reduction(min:dt) shared(data, cellsY, cellsX, dx)
   for(unsigned int j=0 ; j < cellsY ; j++)
   {
     for(unsigned int i=0 ; i < cellsX ; i++)
@@ -154,6 +154,7 @@ State FORCEflux(const State& uL, const State& uR, double dx, double dt, unsigned
 // Compute the array of fluxes from the given data array //PARALLEL!!!!!!!!!!!!!!
 void computeFluxes(const std::vector<State>& data, std::vector<State>& fluxes, double dx, double dt, unsigned int coord)
 {
+#pragma omp parallel for schedule(dynamic) default(none) shared(fluxes, data, dx, dt, coord, cellsX, cellsY)
   for(unsigned int j=1 ; j < cellsY ; j++)
   {
     for(unsigned int i=1 ; i < cellsX ; i++)
@@ -168,6 +169,7 @@ void computeFluxes(const std::vector<State>& data, std::vector<State>& fluxes, d
 // Add the flux array to the data array for the given coordinate direction  //PARALLEL!!!!!!!!!!!!!!
 void addFluxes(std::vector<State>& data, const std::vector<State>& fluxes, double dx, double dt, unsigned int coord)
 {
+#pragma omp parallel for schedule(dynamic) default(none) shared(data, fluxes, cellsX, cellsY, coord, dt,dx)
   for(unsigned int j=1 ; j < cellsY-1 ; j++)
   {
     for(unsigned int i=1 ; i < cellsX-1 ; i++)
@@ -192,8 +194,9 @@ std::pair<double, double> X(unsigned int i, unsigned int j)
 
 int main(void)
 {
-  clock_t start = clock();
-
+double total_start = omp_get_wtime();
+double serial_total;
+double serial_start = omp_get_wtime();
   // User-defined parameters
   cellsX = 640;
   double shockSpeed = 2.95;
@@ -254,36 +257,48 @@ int main(void)
   double t = 0;
   double dx = (maxX - minX) / cellsX;
   
+  double serial_stop = omp_get_wtime();
+  serial_total = serial_stop-serial_start;
+  
+  double par_total = 0;
   while( t < finalT )
   {
+double par_start = omp_get_wtime();	  
     double dt = timestep(data, dx);
     dt *= CFL;
     dt = std::min(dt, finalT - t);
+    
     for(unsigned int c=0 ; c <= 1 ; c++)
     {
       computeFluxes(data, fluxes, dx, dt, c);
       addFluxes(data, fluxes, dx, dt, c);
     }
-
+    
     // Copy bottom row of cells into top row
+#pragma omp parallel for schedule(dynamic) default(none) shared(data, cellsY, cellsX)
     for(unsigned int i=0 ; i < cellsX ; i++)
     {
       data[i + (cellsY-1)*cellsX] = data[i+cellsX];
     }
-
+#pragma omp parallel for schedule(dynamic) default(none) shared(data, cellsY, cellsX)
     // Copy top row of cells into bottom row
     for(unsigned int i=0 ; i < cellsX ; i++)
     {
       data[i] = data[i+(cellsY-2)*cellsX];
     }
-
+    par_total += (omp_get_wtime()-par_start);
     t += dt;
     std::cout << "T = " << t << std::endl;
   }
  
-  clock_t end = clock();
+  double total_finish = omp_get_wtime();
+  double total_time = total_finish-total_start;
+  std::cout<<"Total time = " << total_time << std::endl;
   
-  std::cout << (end - start) / (double)CLOCKS_PER_SEC;
+  std::cout<<"par time = "<<par_total<<std::endl;
+  std::cout<<"serial time = "<<serial_total<<std::endl;
+  //std::cout<<finish << std::endl << start << std::endl; 
+  //std::cout << (end - start) / (double)CLOCKS_PER_SEC;
 
   //return 0;
   // Output
